@@ -1,0 +1,10 @@
+{
+    "require": {
+        "league/flysystem": "^2.5",
+        "league/flysystem-ziparchive": "^2.3",
+        "symfony/serializer": "^7.3",
+        "monolog/monolog": "^3.9",
+        "sabre/xml": "^4.0",
+        "rodneyrehm/plist": "^2.0"
+    }
+}
