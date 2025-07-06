@@ -54,7 +54,7 @@ class UFOGlyph
 		$this->height = $glyphDimensions["height"];
 		switch ($this->height) {
 			case 7:
-				$this->pixelSize = 80;
+				$this->pixelSize = 100;
 				break;
 			default:
 				$this->pixelSize = 720 / $this->height;

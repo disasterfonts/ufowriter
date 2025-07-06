@@ -96,13 +96,8 @@ glyphs/contents.plist:
 	</plist>
 
 
-
-
-
-
-
-
 */
+
 require './UFOGlyph.php';
 
 use CFPropertyList\CFPropertyList;
@@ -111,6 +106,9 @@ use CFPropertyList\CFNumber;
 use CFPropertyList\CFString;
 use CFPropertyList\CFArray;
 use League\Flysystem\Local;
+use Monolog\Level;
+use Monolog\Logger;
+use Monolog\Handler\StreamHandler;
 use Disasterfonts\UFOwriter\UFOGlyph;
 
 class UFOFont
@@ -121,8 +119,10 @@ class UFOFont
 	public $pixelSize;
 	public $glyphs = array();
 	
+	public $logger;
 	
-	function __construct($fontName, $fontDimensions, $glyphs, $fontUPM = 1000, $pixelSize = 80) {
+	
+	function __construct($fontName, $fontDimensions, $glyphs, $fontUPM = 1000, $pixelSize = 100) {
 		switch ($fontDimensions["height"]) {
 			case 7:
 				$pixelSize = $pixelsize;
@@ -136,7 +136,9 @@ class UFOFont
 		$this->pixelSize = $pixelSize;
 		$this->UPM = $fontUPM;
 		$this->glyphs = $this->orderGlyphsByUnicode($glyphs);
+		$this->logger = new Logger('ufowriter');
 	}
+	
 	
 	private function orderGlyphsByUnicode($glyphs) {
 		usort($glyphs, function($a, $b) {
@@ -145,21 +147,27 @@ class UFOFont
 		return $glyphs;
 	}
 	
+	
 	private function getGlyphIndex($glyph) {
 		return $glyph["glyphName"];
 	}
 	
-	private function glyphFilenamePad($glyphIndex) {
-		if (ord($glyphIndex) >= 65 && ord($glyphIndex) <= 91) {
-			$glyphFilename = str_pad($glyphIndex, 2, "_") . '.glif';
+	
+	private function glyphFilenamePad($glyphIndexName) {
+		if (ord($glyphIndexName) >= 65 && ord($glyphIndexName) <= 91) {
+			$glyphFilename = str_pad($glyphIndexName, 2, "_") . '.glif';
 		} else {
-			$glyphFilename = $glyphIndex . '.glif';
+			$glyphFilename = $glyphIndexName . '.glif';
 		}
 		return $glyphFilename;
 	}
 	
+	
 	public function buildFontXML() {
-
+		$this->logger->pushHandler(new StreamHandler('/home/weblite/www/ufowriter/assets/ufo_output/log.txt', Level::Notice));
+		
+		$this->logger->notice($this->name . " build start");
+		
 		$fontinfo_plist = new CFPropertyList();
 		$fontinfo_plist->add( $dict = new CFDictionary() );
 		$dict->add( 'designer', new CFString( 'FONTMINT' ) );
@@ -182,7 +190,7 @@ class UFOFont
 			[$this, 'getGlyphIndex'],
 			$this->glyphs
 		);
-
+		
 		$lib_plist = new CFPropertyList();
 		$lib_plist->add( $dict = new CFDictionary() );
 		$dict->add('public.glyphOrder', $glyphList_array = new CFArray());
@@ -194,14 +202,9 @@ class UFOFont
 		
 		$contents_plist = new CFPropertyList();
 		$contents_plist->add( $dict = new CFDictionary() );
-		foreach($glyphIndexArray as $glyphIndex) {
-			$glyphFilename = $this->glyphFilenamePad($glyphIndex);
-			// if (ord($glyphIndex) >= 65 && ord($glyphIndex) <= 91) {
-			// 	$glyphFile = str_pad($glyphIndex, 2, "_") . '.glif';
-			// } else {
-			// 	$glyphFile = $glyphIndex . '.glif';
-			// }
-			$dict->add($glyphIndex, new CFString($glyphFilename) );
+		foreach($glyphIndexArray as $glyphIndexName) {
+			$glyphFilename = $this->glyphFilenamePad($glyphIndexName);
+			$dict->add($glyphIndexName, new CFString($glyphFilename) );
 		}
 		$contents_xml = $contents_plist->toXML();
 		
@@ -218,6 +221,7 @@ class UFOFont
 			],
 		];
 	}
+	
 	
 	private function buildGlyphsXML($glyphs) {
 		$glyphs_xml_array = [];
@@ -244,30 +248,24 @@ class UFOFont
 		foreach($xml_files as $filename => $xml_file) {
 			if (substr($filename, -6) == ".plist") {
 				// write root .plist files
-				print "would be writing " . $outputDir . '/' . $filename . "<br/>";
 				$filesystem->write($filename, $xml_file);
 			} else {
 				// make glyphs dir
-				print "would be making dir " . $outputDir . '/' . $filename . "<br/>";
 				//$filesystem->deleteDirectory($filename);
 				$filesystem->createDirectory($filename);
 				
 				foreach ($xml_file as $glyph_filename => $glyph_file) {
 					// write contents.plist
 					if (substr($glyph_filename, -6) == '.plist') {
-						print "would be writing " . $outputDir . "/glyphs/" . $glyph_filename . "<br/>";
 						$filesystem->write("glyphs/" . $glyph_filename, $glyph_file);
 					} else {
 						foreach($glyph_file as $glyphName=>$glyph) {
 							// write glyph file
-							print "would be writing " . $outputDir . "/glyphs/" . $this->glyphFilenamePad($glyphName) . "<br/>";
 							$filesystem->write("glyphs/" . $this->glyphFilenamePad($glyphName), $glyph);
 						}
 					}
-					
 				}
 			}
 		}
-		
 	}
 }
