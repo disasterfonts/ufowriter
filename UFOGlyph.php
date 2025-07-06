@@ -47,7 +47,7 @@ class UFOGlyph
 	public $pixelData;
 	public $contours;
 	
-	function __construct($glyphName, $glyphUnicode, $glyphDimensions, $glyphPixelData = array()) {
+	function __construct($glyphName, $glyphUnicode, $glyphDimensions = [], $glyphPixelData = []) {
 		$this->name = $glyphName;
 		$this->unicode = $glyphUnicode;
 		$this->width = $glyphDimensions["width"];
@@ -71,17 +71,17 @@ class UFOGlyph
 	
 	public function buildGlyphXML($root = true) {
 		$glyph = [
-				"@name" => $this->name,
-				"@format" => 2,
-				"advance" => [
-					"@width" => $this->pixelSize * ($this->width + 1)
-				],
-				"unicode" => [
-					"@hex" => $this->unicode
-				],
-				"outline" => [
-					"contour" => $this->contours,
-				]
+			"@name" => $this->name,
+			"@format" => 2,
+			"advance" => [
+				"@width" => $this->pixelSize * ($this->width + 1)
+			],
+			"unicode" => [
+				"@hex" => $this->unicode
+			],
+			"outline" => [
+				"contour" => $this->contours,
+			]
 		];
 		
 		$encoder = new XmlEncoder();

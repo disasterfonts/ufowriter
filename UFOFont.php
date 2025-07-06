@@ -103,6 +103,7 @@ glyphs/contents.plist:
 
 
 */
+require './UFOGlyph.php';
 
 use CFPropertyList\CFPropertyList;
 use CFPropertyList\CFDictionary;
@@ -110,11 +111,13 @@ use CFPropertyList\CFNumber;
 use CFPropertyList\CFString;
 use CFPropertyList\CFArray;
 use League\Flysystem\Local;
+use Disasterfonts\UFOwriter\UFOGlyph;
 
 class UFOFont
 {
 	public $name;
-	public $fontUPM;
+	public $UPM;
+	public $dimensions;
 	public $pixelSize;
 	public $glyphs = array();
 	
@@ -129,20 +132,40 @@ class UFOFont
 				break;
 		}
 		$this->name = $fontName;
+		$this->dimensions = $fontDimensions;
 		$this->pixelSize = $pixelSize;
-		$this->fontUPM = $fontUPM;
+		$this->UPM = $fontUPM;
 		$this->glyphs = $this->orderGlyphsByUnicode($glyphs);
 	}
-
+	
+	private function orderGlyphsByUnicode($glyphs) {
+		usort($glyphs, function($a, $b) {
+			return hexdec($a["unicode"]) - hexdec($b["unicode"]);
+		});
+		return $glyphs;
+	}
+	
+	private function getGlyphIndex($glyph) {
+		return $glyph["glyphName"];
+	}
+	
+	private function glyphFilenamePad($glyphIndex) {
+		if (ord($glyphIndex) >= 65 && ord($glyphIndex) <= 91) {
+			$glyphFilename = str_pad($glyphIndex, 2, "_") . '.glif';
+		} else {
+			$glyphFilename = $glyphIndex . '.glif';
+		}
+		return $glyphFilename;
+	}
 	
 	public function buildFontXML() {
 
 		$fontinfo_plist = new CFPropertyList();
 		$fontinfo_plist->add( $dict = new CFDictionary() );
 		$dict->add( 'designer', new CFString( 'FONTMINT' ) );
-		$dict->add( 'familyName', new CFString( $fontName ) );
-		$dict->add( 'unitsPerEm', new CFNumber( $fontUPM ) );
-		$dict->add( 'capHeight', new CFNumber( $pixelSize * $fontDimensions["height"] ) );
+		$dict->add( 'familyName', new CFString( $this->name ) );
+		$dict->add( 'unitsPerEm', new CFNumber( $this->UPM ) );
+		$dict->add( 'capHeight', new CFNumber( $this->pixelSize * $this->dimensions["height"] ) );
 		$fontinfo_xml = $fontinfo_plist->toXML();
 		
 		$metainfo_plist = new CFPropertyList();
@@ -168,42 +191,83 @@ class UFOFont
 		}
 		$lib_xml = $lib_plist->toXML();
 		
+		
 		$contents_plist = new CFPropertyList();
 		$contents_plist->add( $dict = new CFDictionary() );
 		foreach($glyphIndexArray as $glyphIndex) {
-			if (ord($glyphIndex) >= 65 && ord($glyphIndex) <= 91) {
-				$glyphFile = str_pad($glyphIndex, 2, "_") . '.glif';
-			} else {
-				$glyphFile = $glyphIndex . '.glif';
-			}
-			$dict->add($glyphIndex, new CFString($glyphFile) );
+			$glyphFilename = $this->glyphFilenamePad($glyphIndex);
+			// if (ord($glyphIndex) >= 65 && ord($glyphIndex) <= 91) {
+			// 	$glyphFile = str_pad($glyphIndex, 2, "_") . '.glif';
+			// } else {
+			// 	$glyphFile = $glyphIndex . '.glif';
+			// }
+			$dict->add($glyphIndex, new CFString($glyphFilename) );
 		}
 		$contents_xml = $contents_plist->toXML();
 		
+		$glyphs_xml_array = $this->buildGlyphsXML($this->glyphs);
 		
-		
-		return array(
-			$fontinfo_xml,
-			$groups_xml,
-			$lib_xml,
-			$metainfo_xml,
-			$contents_xml,
-			// $glyphs_xml,
-		);
+		return [
+			"fontinfo.plist" => $fontinfo_xml,
+			"groups.plist" => $groups_xml,
+			"lib.plist" => $lib_xml,
+			"metainfo.plist" => $metainfo_xml,
+			"glyphs" => [
+				"contents.plist" => $contents_xml,
+				"glyph_list" => $glyphs_xml_array,
+			],
+		];
 	}
 	
-	private function orderGlyphsByUnicode($glyphs) {
-		usort($glyphs, function($a, $b) {
-			return hexdec($a["unicode"]) - hexdec($b["unicode"]);
-		});
-		return $glyphs;
+	private function buildGlyphsXML($glyphs) {
+		$glyphs_xml_array = [];
+		
+		foreach($glyphs as $glyph) {
+			$glyph_ufo = new UFOGlyph(
+				$glyph["glyphName"],
+				$glyph["unicode"],
+				$this->dimensions,
+				$glyph["cells"]
+			);
+			$glyphs_xml_array[$glyph["glyphName"]] = $glyph_ufo->buildGlyphXML();
+		}
+		return $glyphs_xml_array;
 	}
 	
-	private function getGlyphIndex($glyph) {
-		return $glyph["glyphName"];
-	}
 	
 	public function writeFontFiles($outputDir) {
-		$adapter = new \League\Flysystem\Local\LocalFilesystemAdapter($outputDir . '/storage');
+		$adapter = new \League\Flysystem\Local\LocalFilesystemAdapter($outputDir);
+		$filesystem = new \League\Flysystem\Filesystem($adapter);
+		
+		$xml_files = $this->buildFontXML();
+		
+		foreach($xml_files as $filename => $xml_file) {
+			if (substr($filename, -6) == ".plist") {
+				// write root .plist files
+				print "would be writing " . $outputDir . '/' . $filename . "<br/>";
+				$filesystem->write($filename, $xml_file);
+			} else {
+				// make glyphs dir
+				print "would be making dir " . $outputDir . '/' . $filename . "<br/>";
+				//$filesystem->deleteDirectory($filename);
+				$filesystem->createDirectory($filename);
+				
+				foreach ($xml_file as $glyph_filename => $glyph_file) {
+					// write contents.plist
+					if (substr($glyph_filename, -6) == '.plist') {
+						print "would be writing " . $outputDir . "/glyphs/" . $glyph_filename . "<br/>";
+						$filesystem->write("glyphs/" . $glyph_filename, $glyph_file);
+					} else {
+						foreach($glyph_file as $glyphName=>$glyph) {
+							// write glyph file
+							print "would be writing " . $outputDir . "/glyphs/" . $this->glyphFilenamePad($glyphName) . "<br/>";
+							$filesystem->write("glyphs/" . $this->glyphFilenamePad($glyphName), $glyph);
+						}
+					}
+					
+				}
+			}
+		}
+		
 	}
 }
