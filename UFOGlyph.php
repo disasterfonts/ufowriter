@@ -63,6 +63,7 @@ class UFOGlyph
 		
 		$this->pixelData = $glyphPixelData;
 		$this->contours = $this->buildPixelSquareContours($glyphPixelData);
+		$this->filename = $glyphName;
 	}
 	
 	function __toString() {
@@ -142,5 +143,48 @@ class UFOGlyph
 		}
 		array_reverse($contours);
 		return $contours;
+	}
+	
+	public function buildCompositeGlyphXML($base, $accent = 0, $xOffset = 1, $yOffset = 1) {
+		$fiveAdjust = $this->height - 5; // adjust for default accents, which are 5 pixels high
+		if ($yOffset > 0) {
+			$yOffsetUnits = $this->pixelSize * ($this->height + $yOffset - $fiveAdjust);
+		} else {
+			$yOffsetUnits = $this->pixelSize * ($yOffset - $fiveAdjust);
+		}
+		
+		$xOffsetUnits = (floor($this->width/2) -1 + $xOffset) * $this->pixelSize;
+		
+		$compositeGlyph = [
+			"@name" => $this->name,
+			"@format" => 2,
+			"advance" => [
+				"@width" => $this->pixelSize * ($this->width + 1)
+			],
+			"unicode" => [
+				"@hex" => $this->unicode
+			],
+			"outline" => [
+				"component" => [
+					[
+						"@base" => $base,
+					],
+					[
+						"@base" => $accent,
+						"@yOffset" => $yOffsetUnits,
+						"@xOffset" => $xOffsetUnits,
+					]
+				],
+			],
+		];
+		$encoder = new XmlEncoder();
+		
+		$compositeGlyphXML = $encoder->encode($compositeGlyph, "xml", [
+				'xml_format_output' => true,
+				'xml_root_node_name' => 'glyph'
+				]
+			);
+		
+		return $compositeGlyphXML;
 	}
 }
